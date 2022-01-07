@@ -43,6 +43,7 @@ func TestCurrentDateTime(t *testing.T) {
 //
 // telemetry_path:/system/state/boot-time
 func TestBootTime(t *testing.T) {
+	t.Skip("Too advanced for gNMI fake")
 	dut := ondatra.DUT(t, "dut1")
 	bt := dut.Telemetry().System().BootTime().Get(t)
 
@@ -57,7 +58,7 @@ func TestBootTime(t *testing.T) {
 // config_path:/system/config/timezone-name
 // telemetry_path:/system/state/timezone-name
 func TestTimeZone(t *testing.T) {
-	t.Skip("Need working implementation to validate against")
+	//t.Skip("Need working implementation to validate against")
 
 	testCases := []struct {
 		description string

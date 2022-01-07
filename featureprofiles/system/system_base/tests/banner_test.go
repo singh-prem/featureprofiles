@@ -28,7 +28,7 @@ import (
 // config_path:/system/config/motd-banner
 // telemetry_path:/system/state/motd-banner
 func TestMotdBanner(t *testing.T) {
-	t.Skip("Need working implementation to validate against")
+	//t.Skip("Need working implementation to validate against")
 
 	testCases := []struct {
 		description string
@@ -73,7 +73,7 @@ func TestMotdBanner(t *testing.T) {
 // config_path:/system/config/login-banner
 // telemetry_path:/system/state/login-banner
 func TestLoginBanner(t *testing.T) {
-	t.Skip("Need working implementation to validate against")
+	//t.Skip("Need working implementation to validate against")
 
 	testCases := []struct {
 		description string
