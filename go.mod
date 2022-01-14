@@ -15,7 +15,7 @@ require (
 	github.com/openconfig/gnoi v0.0.0-20211102203610-1ece8ed91a0d // indirect
 	github.com/openconfig/goyang v0.3.1 // indirect
 	github.com/openconfig/gribigo v0.0.0-20211117144123-9bcf5960a05d // indirect
-	github.com/openconfig/ygot v0.13.1 // indirect
+	github.com/openconfig/ygot v0.13.2 // indirect
 	github.com/p4lang/p4runtime v1.3.0 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
@@ -28,6 +28,8 @@ require (
 	google.golang.org/protobuf v1.27.1 // indirect
 )
 
-replace github.com/openconfig/ondatra => github.com/wenovus/ondatra v0.0.0-20220107204946-b16f0a337329
+replace github.com/openconfig/ondatra => github.com/wenovus/ondatra v0.0.0-20220114232547-e6ac8519596d
 
-replace github.com/openconfig/gribigo => github.com/wenovus/gribigo v0.0.0-20220107203937-1e25ad6a6149
+replace github.com/openconfig/gnmi => github.com/wenovus/gnmi v0.0.0-20220114231359-cfbc69541310
+
+replace github.com/openconfig/gribigo => github.com/wenovus/gribigo v0.0.0-20220114232223-ee81f9935622

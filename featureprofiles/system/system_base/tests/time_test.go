@@ -17,6 +17,7 @@
 package system_base_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -28,14 +29,32 @@ import (
 //
 // telemetry_path:/system/state/current-datetime
 func TestCurrentDateTime(t *testing.T) {
-	t.Skip("Need working implementation to validate against")
+	//t.Skip("Need working implementation to validate against")
 
 	dut := ondatra.DUT(t, "dut1")
 	now := dut.Telemetry().System().CurrentDatetime().Get(t)
-	_, err := time.Parse(time.RFC3339, now)
+	before, err := time.Parse(time.RFC3339, now)
 	if err != nil {
 		t.Errorf("Failed to parse current time: got %s: %s", now, err)
 	}
+	time.Sleep(time.Second)
+	now = dut.Telemetry().System().CurrentDatetime().Get(t)
+	after, err := time.Parse(time.RFC3339, now)
+	if err != nil {
+		t.Errorf("Failed to parse current time: got %s: %s", now, err)
+	}
+	if !before.Before(after) {
+		t.Errorf("before time %v not actually before after time %v", before, after)
+	}
+}
+
+func TestSyslog(t *testing.T) {
+	dut := ondatra.DUT(t, "dut1")
+	msg := dut.Telemetry().System().Messages().Message().Msg().Get(t)
+	fmt.Println(msg)
+	time.Sleep(2 * time.Second)
+	msg = dut.Telemetry().System().Messages().Message().Msg().Get(t)
+	fmt.Println(msg)
 }
 
 // TestBootTime verifies the timestamp that the system was last restarted can
@@ -43,7 +62,6 @@ func TestCurrentDateTime(t *testing.T) {
 //
 // telemetry_path:/system/state/boot-time
 func TestBootTime(t *testing.T) {
-	t.Skip("Too advanced for gNMI fake")
 	dut := ondatra.DUT(t, "dut1")
 	bt := dut.Telemetry().System().BootTime().Get(t)
 
