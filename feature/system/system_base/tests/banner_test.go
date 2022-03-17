@@ -28,7 +28,6 @@ import (
 // config_path:/system/config/motd-banner
 // telemetry_path:/system/state/motd-banner
 func TestMotdBanner(t *testing.T) {
-	t.Skip("Need working implementation to validate against")
 
 	testCases := []struct {
 		description string
@@ -40,7 +39,7 @@ func TestMotdBanner(t *testing.T) {
 		{"Long String", "WARNING : Unauthorized access to this system is forbidden and will be prosecuted by law. By accessing this system, you agree that your actions may be monitored if unauthorized usage is suspected."},
 	}
 
-	dut := ondatra.DUT(t, "dut")
+	dut := ondatra.DUT(t, "fakedut")
 
 	for _, testCase := range testCases {
 		t.Run(testCase.description, func(t *testing.T) {
@@ -79,7 +78,6 @@ func TestMotdBanner(t *testing.T) {
 // config_path:/system/config/login-banner
 // telemetry_path:/system/state/login-banner
 func TestLoginBanner(t *testing.T) {
-	t.Skip("Need working implementation to validate against")
 
 	testCases := []struct {
 		description string
@@ -91,7 +89,7 @@ func TestLoginBanner(t *testing.T) {
 		{"Long String", "WARNING : Unauthorized access to this system is forbidden and will be prosecuted by law. By accessing this system, you agree that your actions may be monitored if unauthorized usage is suspected."},
 	}
 
-	dut := ondatra.DUT(t, "dut")
+	dut := ondatra.DUT(t, "fakedut")
 
 	for _, testCase := range testCases {
 		t.Run(testCase.description, func(t *testing.T) {

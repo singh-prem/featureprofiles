@@ -28,9 +28,8 @@ import (
 //
 // telemetry_path:/system/state/current-datetime
 func TestCurrentDateTime(t *testing.T) {
-	t.Skip("Need working implementation to validate against")
 
-	dut := ondatra.DUT(t, "dut")
+	dut := ondatra.DUT(t, "fakedut")
 	now := dut.Telemetry().System().CurrentDatetime().Get(t)
 	_, err := time.Parse(time.RFC3339, now)
 	if err != nil {
@@ -43,7 +42,7 @@ func TestCurrentDateTime(t *testing.T) {
 //
 // telemetry_path:/system/state/boot-time
 func TestBootTime(t *testing.T) {
-	dut := ondatra.DUT(t, "dut")
+	dut := ondatra.DUT(t, "fakedut")
 	bt := dut.Telemetry().System().BootTime().Get(t)
 
 	// Boot time should be after Dec 22, 2021 00:00:00 GMT in nanoseconds
