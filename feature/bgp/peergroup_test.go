@@ -138,14 +138,14 @@ func TestPGAugmentBGP(t *testing.T) {
 		},
 	}, {
 		desc:  "PeerGroup with local-address",
-		pg:    NewPeerGroup("GLOBAL-PEER").WithLocalAddress("1.2.3.5"),
+		pg:    NewPeerGroup("GLOBAL-PEER").WithLocalAddress("192.0.2.2"),
 		inBGP: &fpoc.NetworkInstance_Protocol_Bgp{},
 		wantBGP: &fpoc.NetworkInstance_Protocol_Bgp{
 			PeerGroup: map[string]*fpoc.NetworkInstance_Protocol_Bgp_PeerGroup{
 				"GLOBAL-PEER": {
 					PeerGroupName: ygot.String("GLOBAL-PEER"),
 					Transport: &fpoc.NetworkInstance_Protocol_Bgp_PeerGroup_Transport{
-						LocalAddress: ygot.String("1.2.3.5"),
+						LocalAddress: ygot.String("192.0.2.2"),
 					},
 				},
 			},
@@ -302,8 +302,8 @@ func TestPGAugmentBGP(t *testing.T) {
 	}
 }
 
-// TestPGAugmentBGP_Errors tests the BGP pg augment to BGP pg validation.
-func TestPGAugmentBGP_Errors(t *testing.T) {
+// TestPGAugmentBGPErrors tests the BGP pg augment to BGP pg validation.
+func TestPGAugmentBGPErrors(t *testing.T) {
 	tests := []struct {
 		desc          string
 		pg            *PeerGroup

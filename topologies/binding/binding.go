@@ -21,10 +21,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openconfig/ondatra"
 	"github.com/openconfig/ondatra/binding"
 	"github.com/openconfig/ondatra/binding/ixweb"
 	"google.golang.org/grpc"
 
+	"github.com/openconfig/featureprofiles/internal/rundata"
 	bindpb "github.com/openconfig/featureprofiles/topologies/proto/binding"
 	gpb "github.com/openconfig/gnmi/proto/gnmi"
 	grpb "github.com/openconfig/gribi/v1/proto/service"
@@ -37,8 +39,9 @@ import (
 // testbed topology.
 type staticBind struct {
 	binding.Binding
-	r    resolver
-	resv *binding.Reservation
+	r          resolver
+	resv       *binding.Reservation
+	pushConfig bool
 }
 
 type staticDUT struct {
@@ -70,6 +73,9 @@ func (b *staticBind) Reserve(ctx context.Context, tb *opb.Testbed, runTime, wait
 	resv.ID = resvID
 	b.resv = resv
 
+	if err := b.afterReserve(ctx); err != nil {
+		return nil, err
+	}
 	if err := b.reserveIxSessions(ctx); err != nil {
 		return nil, err
 	}
@@ -91,7 +97,48 @@ func (b *staticBind) FetchReservation(ctx context.Context, id string) (*binding.
 	if b.resv == nil || id != resvID {
 		return nil, fmt.Errorf("reservation not found: %s", id)
 	}
+	if err := b.afterReserve(ctx); err != nil {
+		return nil, err
+	}
 	return b.resv, nil
+}
+
+func (b *staticBind) afterReserve(ctx context.Context) error {
+	m := rundata.Properties(ctx, b.resv)
+	for k, v := range m {
+		ondatra.Report().AddSuiteProperty(k, v)
+	}
+
+	if !b.pushConfig {
+		return nil
+	}
+	return b.reset(ctx)
+}
+
+func (b *staticBind) reset(ctx context.Context) error {
+	for _, dut := range b.resv.DUTs {
+		if sdut, ok := dut.(*staticDUT); ok {
+			if err := sdut.reset(ctx); err != nil {
+				return fmt.Errorf("could not reset device %s: %w", sdut.Name(), err)
+			}
+		}
+	}
+	return nil
+}
+
+func (d *staticDUT) reset(ctx context.Context) error {
+	// Each of the individual reset functions should be no-op if the reset action is not
+	// requested.
+	if err := resetCLI(ctx, d.dev, d.r); err != nil {
+		return err
+	}
+	if err := resetGNMI(ctx, d.dev, d.r); err != nil {
+		return err
+	}
+	if err := resetGRIBI(ctx, d.dev, d.r); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (d *staticDUT) DialGNMI(ctx context.Context, opts ...grpc.DialOption) (gpb.GNMIClient, error) {
@@ -115,7 +162,7 @@ func (d *staticDUT) DialGNOI(ctx context.Context, opts ...grpc.DialOption) (bind
 	if err != nil {
 		return nil, err
 	}
-	return gnoiConn{conn}, nil
+	return gnoiConn{conn: conn}, nil
 }
 
 func (d *staticDUT) DialGRIBI(ctx context.Context, opts ...grpc.DialOption) (grpb.GRIBIClient, error) {
@@ -142,7 +189,7 @@ func (d *staticDUT) DialP4RT(ctx context.Context, opts ...grpc.DialOption) (p4pb
 	return p4pb.NewP4RuntimeClient(conn), nil
 }
 
-func (d *staticDUT) DialCLI(ctx context.Context, opts ...grpc.DialOption) (binding.StreamClient, error) {
+func (d *staticDUT) DialCLI(ctx context.Context) (binding.StreamClient, error) {
 	dialer, err := d.r.ssh(d.Name())
 	if err != nil {
 		return nil, err
