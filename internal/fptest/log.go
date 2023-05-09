@@ -19,13 +19,14 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"reflect"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 	"unicode"
 
 	"github.com/openconfig/featureprofiles/internal/check"
+	"github.com/openconfig/ondatra"
 	"github.com/openconfig/ygnmi/ygnmi"
 	"github.com/openconfig/ygot/ygot"
 )
@@ -59,12 +60,13 @@ func sanitizeFilename(filename string) string {
 	}, filename)
 }
 
-// WriteOutput writes content to a file in the specified outputs
-// directory, after sanitizing the filename and making it unique.
-func WriteOutput(filename, suffix string, content string) error {
+// WriteOutput writes content to a file in --outputs_dir, after sanitizing
+// the filename and making it unique.  Returns the sanitized filename
+// relative to --outputs_dir.
+func WriteOutput(filename, suffix string, content string) (string, error) {
 	if *outputsDir == "" {
 		log.Printf("Test output %q is discarded without -outputs_dir.  Please specify -outputs_dir to keep it.", filename)
-		return nil
+		return "", nil
 	}
 	template := fmt.Sprintf(
 		"%s.%s%s%s",
@@ -74,70 +76,17 @@ func WriteOutput(filename, suffix string, content string) error {
 		suffix)
 	f, err := os.CreateTemp(*outputsDir, template)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer f.Close()
 	_, err = f.Write([]byte(content))
 	log.Printf("Test output written: %s", f.Name())
-	return err
-}
 
-// ygotToText serializes any validatable ygot struct to a JSON string.
-// This is mainly useful in tests for debugging, as a convenient way
-// to format an OpenConfig struct or telemetry struct.
-//
-// When used to generate a config, it will return an error if
-// validation fails.  Note that ygot.ValidatedGoStruct is a struct
-// that can be validated, not one that already has been validated.
-func ygotToText(obj ygot.ValidatedGoStruct, config bool) (string, error) {
-	return ygot.EmitJSON(obj, &ygot.EmitJSONConfig{
-		Format: ygot.RFC7951,
-		RFC7951Config: &ygot.RFC7951JSONConfig{
-			AppendModuleName: true,
-			PreferShadowPath: config,
-		},
-		Indent:         "  ",
-		SkipValidation: !config,
-	})
-}
-
-// pathToText converts a ygot path to a string.
-func pathToText(n ygot.PathStruct) string {
-	path, _, errs := ygot.ResolvePath(n)
-	if len(errs) > 0 {
-		return fmt.Sprintf("<ygot.ResolvePath errs: %v>", errs)
+	rel, rerr := filepath.Rel(*outputsDir, f.Name())
+	if rerr != nil {
+		rel = f.Name()
 	}
-	text, err := ygot.PathToString(path)
-	if err != nil {
-		return fmt.Sprintf("<ygot.PathToString err: %v>", err)
-	}
-	return text
-}
-
-// isConfig determines whether the ygot path is defined in Ondatra's
-// config package or telemetry package.
-func isConfig(path ygot.PathStruct) bool {
-	ty := reflect.TypeOf(path)
-	if ty.Kind() == reflect.Ptr {
-		ty = ty.Elem()
-	}
-	pkg := ty.PkgPath()
-	return strings.Contains(pkg, "/ondatra/config/") ||
-		strings.HasSuffix(pkg, "/ondatra")
-}
-
-// LogYgot logs a ygot GoStruct at path as either config or telemetry,
-// depending on the path.  It also writes a copy to a *.json file in
-// the directory specified by the -outputs_dir flag.
-//
-// Ondatra has separate paths for config (dut.Config()) and telemetry
-// (dut.Telemetry()), but both share the same GoStruct defined in
-// telemetry.  This is why we use the path to decide whether to format
-// the object as config or telemetry.  The object alone looks the
-// same.
-func LogYgot(t testing.TB, what string, path ygot.PathStruct, obj ygot.ValidatedGoStruct) {
-	t.Helper()
-	logYgot(t, what, path, obj, true)
+	return rel, err
 }
 
 // LoggableQuery is a subset of the ygnmi.AnyQuery type used for logging
@@ -151,44 +100,19 @@ var _ LoggableQuery = ygnmi.AnyQuery[string](nil)
 // LogQuery logs a ygot GoStruct at path as either config or telemetry,
 // depending on the query.  It also writes a copy to a *.json file in
 // the directory specified by the -outputs_dir flag.
-func LogQuery(t testing.TB, what string, query LoggableQuery, obj ygot.ValidatedGoStruct) {
+func LogQuery(t testing.TB, what string, query LoggableQuery, obj ygot.GoStruct) {
 	t.Helper()
 	logQuery(t, what, query, obj, true)
 }
 
-// WriteYgot is like LogYgot but only writes to test outputs dir so it
+// WriteQuery is like LogQuery but only writes to test outputs dir so it
 // does not pollute the test log.
-func WriteYgot(t testing.TB, what string, path ygot.PathStruct, obj ygot.ValidatedGoStruct) {
+func WriteQuery(t testing.TB, what string, query LoggableQuery, obj ygot.GoStruct) {
 	t.Helper()
-	logYgot(t, what, path, obj, false)
+	logQuery(t, what, query, obj, false)
 }
 
-func logYgot(t testing.TB, what string, path ygot.PathStruct, obj ygot.ValidatedGoStruct, shouldLog bool) {
-	t.Helper()
-	pathText := pathToText(path)
-	config := isConfig(path)
-
-	var title string
-	if config {
-		title = "Config"
-	} else {
-		title = "Telemetry"
-	}
-
-	header := fmt.Sprintf("%s for %s at %s", title, what, pathText)
-	text, err := ygotToText(obj, config)
-	if err != nil {
-		t.Errorf("%s render error: %v", header, err)
-	}
-	if shouldLog {
-		t.Logf("%s:\n%s", header, text)
-	}
-	if err := WriteOutput(t.Name()+" "+header, ".json", text); err != nil {
-		t.Logf("Could not write test output: %v", err)
-	}
-}
-
-func logQuery(t testing.TB, what string, query LoggableQuery, obj ygot.ValidatedGoStruct, shouldLog bool) {
+func logQuery(t testing.TB, what string, query LoggableQuery, obj ygot.GoStruct, shouldLog bool) {
 	t.Helper()
 	pathText := check.FormatPath(query.PathStruct())
 	config := !query.IsState()
@@ -201,14 +125,26 @@ func logQuery(t testing.TB, what string, query LoggableQuery, obj ygot.Validated
 	}
 
 	header := fmt.Sprintf("%s for %s at %s", title, what, pathText)
-	text, err := ygotToText(obj, config)
+	text, err := ygot.EmitJSON(obj, &ygot.EmitJSONConfig{
+		Format: ygot.RFC7951,
+		RFC7951Config: &ygot.RFC7951JSONConfig{
+			AppendModuleName: true,
+			PreferShadowPath: config,
+		},
+		Indent:         "  ",
+		SkipValidation: true,
+	})
 	if err != nil {
 		t.Errorf("%s render error: %v", header, err)
 	}
 	if shouldLog {
 		t.Logf("%s:\n%s", header, text)
 	}
-	if err := WriteOutput(t.Name()+" "+header, ".json", text); err != nil {
+	filename, err := WriteOutput(t.Name()+" "+header, ".json", text)
+	if err != nil {
 		t.Logf("Could not write test output: %v", err)
+	}
+	if filename != "" {
+		ondatra.Report().AddTestProperty(t, "test_output0", filename)
 	}
 }

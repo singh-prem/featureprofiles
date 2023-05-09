@@ -21,12 +21,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openconfig/ondatra"
+	"github.com/open-traffic-generator/snappi/gosnappi"
 	"github.com/openconfig/ondatra/binding"
 	"github.com/openconfig/ondatra/binding/ixweb"
 	"google.golang.org/grpc"
 
-	"github.com/openconfig/featureprofiles/internal/rundata"
 	bindpb "github.com/openconfig/featureprofiles/topologies/proto/binding"
 	gpb "github.com/openconfig/gnmi/proto/gnmi"
 	grpb "github.com/openconfig/gribi/v1/proto/service"
@@ -63,6 +62,9 @@ var _ = binding.Binding(&staticBind{})
 const resvID = "STATIC"
 
 func (b *staticBind) Reserve(ctx context.Context, tb *opb.Testbed, runTime, waitTime time.Duration, partial map[string]string) (*binding.Reservation, error) {
+	_ = runTime
+	_ = waitTime
+	_ = partial
 	if b.resv != nil {
 		return nil, fmt.Errorf("only one reservation is allowed")
 	}
@@ -73,8 +75,10 @@ func (b *staticBind) Reserve(ctx context.Context, tb *opb.Testbed, runTime, wait
 	resv.ID = resvID
 	b.resv = resv
 
-	if err := b.afterReserve(ctx); err != nil {
-		return nil, err
+	if b.pushConfig {
+		if err := b.reset(ctx); err != nil {
+			return nil, err
+		}
 	}
 	if err := b.reserveIxSessions(ctx); err != nil {
 		return nil, err
@@ -93,26 +97,9 @@ func (b *staticBind) Release(ctx context.Context) error {
 	return nil
 }
 
-func (b *staticBind) FetchReservation(ctx context.Context, id string) (*binding.Reservation, error) {
-	if b.resv == nil || id != resvID {
-		return nil, fmt.Errorf("reservation not found: %s", id)
-	}
-	if err := b.afterReserve(ctx); err != nil {
-		return nil, err
-	}
-	return b.resv, nil
-}
-
-func (b *staticBind) afterReserve(ctx context.Context) error {
-	m := rundata.Properties(ctx, b.resv)
-	for k, v := range m {
-		ondatra.Report().AddSuiteProperty(k, v)
-	}
-
-	if !b.pushConfig {
-		return nil
-	}
-	return b.reset(ctx)
+func (b *staticBind) FetchReservation(_ context.Context, id string) (*binding.Reservation, error) {
+	_ = id
+	return nil, errors.New("static binding does not support fetching an existing reservation")
 }
 
 func (b *staticBind) reset(ctx context.Context) error {
@@ -135,10 +122,7 @@ func (d *staticDUT) reset(ctx context.Context) error {
 	if err := resetGNMI(ctx, d.dev, d.r); err != nil {
 		return err
 	}
-	if err := resetGRIBI(ctx, d.dev, d.r); err != nil {
-		return err
-	}
-	return nil
+	return resetGRIBI(ctx, d.dev, d.r)
 }
 
 func (d *staticDUT) DialGNMI(ctx context.Context, opts ...grpc.DialOption) (gpb.GNMIClient, error) {
@@ -189,7 +173,7 @@ func (d *staticDUT) DialP4RT(ctx context.Context, opts ...grpc.DialOption) (p4pb
 	return p4pb.NewP4RuntimeClient(conn), nil
 }
 
-func (d *staticDUT) DialCLI(ctx context.Context) (binding.StreamClient, error) {
+func (d *staticDUT) DialCLI(_ context.Context) (binding.StreamClient, error) {
 	dialer, err := d.r.ssh(d.Name())
 	if err != nil {
 		return nil, err
@@ -199,6 +183,39 @@ func (d *staticDUT) DialCLI(ctx context.Context) (binding.StreamClient, error) {
 		return nil, err
 	}
 	return newCLI(sc)
+}
+
+func (a *staticATE) DialGNMI(ctx context.Context, opts ...grpc.DialOption) (gpb.GNMIClient, error) {
+	dialer, err := a.r.ateGNMI(a.Name())
+	if err != nil {
+		return nil, err
+	}
+	conn, err := dialer.dialGRPC(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return gpb.NewGNMIClient(conn), nil
+}
+
+func (a *staticATE) DialOTG(ctx context.Context, opts ...grpc.DialOption) (gosnappi.GosnappiApi, error) {
+	if a.dev.Otg == nil {
+		return nil, fmt.Errorf("otg must be configured in ATE binding to run OTG test")
+	}
+	dialer, err := a.r.ateOtg(a.Name())
+	if err != nil {
+		return nil, err
+	}
+	conn, err := dialer.dialGRPC(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	api := gosnappi.NewApi()
+	grpcTransport := api.NewGrpcTransport().SetClientConnection(conn)
+	if dialer.Timeout != 0 {
+		grpcTransport.SetRequestTimeout(time.Duration(dialer.Timeout) * time.Second)
+	}
+	return api, nil
 }
 
 func (a *staticATE) DialIxNetwork(ctx context.Context) (*binding.IxNetwork, error) {
@@ -308,8 +325,8 @@ func dims(td *opb.Device, bd *bindpb.Device) (*binding.Dims, error) {
 	return &binding.Dims{
 		Name:            bd.Name,
 		Vendor:          td.Vendor,
-		HardwareModel:   td.HardwareModel,
-		SoftwareVersion: td.SoftwareVersion,
+		HardwareModel:   td.GetHardwareModel(),
+		SoftwareVersion: td.GetSoftwareVersion(),
 		Ports:           portmap,
 	}, nil
 }
@@ -346,6 +363,15 @@ func ports(tports []*opb.Port, bports []*bindpb.Port) (map[string]*binding.Port,
 func (b *staticBind) reserveIxSessions(ctx context.Context) error {
 	ates := b.resv.ATEs
 	for _, ate := range ates {
+
+		bate := b.r.ateByName(ate.Name())
+		if bate == nil {
+			return fmt.Errorf("missing binding for ATE %q", bate.Id)
+		}
+		if bate.Ixnetwork == nil {
+			continue
+		}
+
 		dialer, err := b.r.ixnetwork(ate.Name())
 		if err != nil {
 			return err

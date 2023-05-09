@@ -53,15 +53,16 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
+	"time"
 
+	log "github.com/golang/glog"
+	mpb "github.com/openconfig/featureprofiles/proto/metadata_go_proto"
 	"github.com/openconfig/ondatra/binding"
+	"google.golang.org/protobuf/encoding/prototext"
 )
-
-// TestPlanID can be set by a test to optionally self-report the test
-// plan ID.
-var TestPlanID string
 
 var (
 	knownIssueURL = flag.String("known_issue_url", "", "Report a known issue that explains why the test fails.  This should be a URL to the issue tracker.")
@@ -92,12 +93,24 @@ func topology(resv *binding.Reservation) string {
 
 // Properties builds the test properties map representing run data.
 func Properties(ctx context.Context, resv *binding.Reservation) map[string]string {
+	md, err := readFromMetadataProto()
+	if err != nil {
+		log.Errorf("Error reading metadata proto: %v", err)
+	}
+
 	m := make(map[string]string)
 	local(m)
 
-	if TestPlanID != "" {
-		m["test.plan_id"] = TestPlanID
+	if uuid := md.GetUuid(); uuid != "" {
+		m["test.uuid"] = uuid
 	}
+	if planID := md.GetPlanId(); planID != "" {
+		m["test.plan_id"] = planID
+	}
+	if desc := md.GetDescription(); desc != "" {
+		m["test.description"] = desc
+	}
+
 	if *knownIssueURL != "" {
 		m["known_issue_url"] = *knownIssueURL
 	}
@@ -107,5 +120,27 @@ func Properties(ctx context.Context, resv *binding.Reservation) map[string]strin
 		dutsInfo(ctx, m, resv)
 	}
 
+	return m
+}
+
+func readFromMetadataProto() (*mpb.Metadata, error) {
+	// When "go test" runs, the current working directory is the test
+	// package directory, which is where we will find the metadata file.
+	const metadataFilename = "metadata.textproto"
+	bytes, err := os.ReadFile(metadataFilename)
+	if err != nil {
+		return nil, err
+	}
+	md := new(mpb.Metadata)
+	return md, prototext.Unmarshal(bytes, md)
+}
+
+var timeBegin = time.Now()
+
+// Timing builds the test properties with the begin and end times.
+func Timing(context.Context) map[string]string {
+	m := make(map[string]string)
+	m["time.begin"] = fmt.Sprint(timeBegin.Unix())
+	m["time.end"] = fmt.Sprint(time.Now().Unix())
 	return m
 }
